@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Faculty Server",
+      "type": "shell",
+      "command": "uv run uvicorn server.faculty_server:app --reload --port 8088",
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI Help",
+      "type": "shell",
+      "command": "uv run python -m src.student_agent.cli --help",
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI Accept (sample SRE)",
+      "type": "shell",
+      "command": "uv run python -m src.student_agent.cli accept --sre tests\\fixtures\\sample_sre.json",
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI Scaffold",
+      "type": "shell",
+      "command": "uv run python -m src.student_agent.cli scaffold",
+      "problemMatcher": []
+    },
+    {
+      "label": "Notify Static",
+      "type": "shell",
+      "command": "uv run python -m src.student_agent.cli notify --endpoint http://127.0.0.1:8088/evaluate/static --sha dev --pages-url http://example.com",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Tests",
+      "type": "shell",
+      "command": "uv run pytest -q",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint (ruff)",
+      "type": "shell",
+      "command": "uv run ruff check src server tests",
+      "problemMatcher": []
+    }
+  ]
+}
