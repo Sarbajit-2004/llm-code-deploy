@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+
+# Virtual env
+.venv/
+.env
+.env.*
+
+# uv / build caches
+.uv/
+.build/
+.dist/
+
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Project artifacts
+.state/
+server/results/
+docs/*.pdf
+*.pdf
+*.mp4
