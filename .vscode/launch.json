@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Faculty Server (uvicorn)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "server.faculty_server:app",
+        "--reload",
+        "--port",
+        "8088"
+      ],
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}\\.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug CLI (accept sample SRE)",
+      "type": "python",
+      "request": "launch",
+      "module": "src.student_agent.cli",
+      "args": [
+        "accept",
+        "--sre",
+        "tests\\fixtures\\sample_sre.json"
+      ],
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}\\.env",
+      "console": "integratedTerminal"
+    }
+  ]
+}
