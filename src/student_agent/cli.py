@@ -135,3 +135,33 @@ def notify(endpoint, sha, pages_url):
 
 if __name__ == "__main__":
     cli()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# deploy: push to GitHub + enable Pages + (optionally) notify all endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+@cli.command()
+@click.option("--base", default="http://127.0.0.1:8088", help="Faculty base URL")
+@click.option("--notify/--no-notify", default=True, help="Notify evaluator after deploy")
+def deploy(base: str, notify: bool):
+    """One-shot: GitHub push/Pages, then notify static/dynamic/llm."""
+    from .github_api import bootstrap_and_deploy
+    console.print("[bold]Deploying to GitHub Pages…[/bold]")
+    res = bootstrap_and_deploy()
+    sha = res["sha"]
+    pages_url = res["pages_url"]
+    console.print(Panel.fit(f"Deployed.\nSHA: [cyan]{sha}[/cyan]\nURL: [cyan]{pages_url}[/cyan]"))
+
+    if not notify:
+        return
+
+    try:
+        import requests
+        for kind in ("static", "dynamic", "llm"):
+            ep = f"{base}/evaluate/{kind}"
+            r = requests.post(ep, json={"sha": sha, "pages_url": pages_url}, timeout=10)
+            r.raise_for_status()
+            console.print(f"[green]Notified[/green] {ep} -> {r.json()}")
+    except Exception as exc:
+        console.print(f"[yellow]Notify step failed:[/yellow] {exc}\n"
+                      f"You can re-run notify manually with the printed SHA/URL.")
