@@ -12,9 +12,12 @@
         "--port",
         "8088"
       ],
+
       "justMyCode": true,
       "envFile": "${workspaceFolder}\\.env",
+      
       "console": "integratedTerminal"
+
     },
     {
       "name": "Debug CLI (accept sample SRE)",
