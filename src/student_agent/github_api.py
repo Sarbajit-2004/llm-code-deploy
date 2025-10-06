@@ -19,9 +19,18 @@ GITHUB_API = "https://api.github.com"
 # ──────────────────────────────────────────────────────────────────────────────
 def _run(cmd: list[str], cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
     """Run a command and raise on failure; prints trimmed stdout/stderr for context."""
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, text=True, capture_output=True)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        text=True,
+        capture_output=True,
+    )
     if proc.returncode != 0:
-        raise RuntimeError(f"Command failed: {' '.join(cmd)}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}")
+        raise RuntimeError(
+            f"Command failed: {' '.join(cmd)}\n"
+            f"STDOUT:\n{proc.stdout}\n"
+            f"STDERR:\n{proc.stderr}"
+        )
     return proc
 
 
@@ -31,14 +40,18 @@ def _git(*args: str) -> subprocess.CompletedProcess:
 
 def _headers(token: str) -> Dict[str, str]:
     return {
-        "Authorization": f"token {token}",
+        "Authorization": f"Bearer {token}",  # works for both classic & fine-grained PATs
         "Accept": "application/vnd.github+json",
         "User-Agent": "llm-code-deploy-student-agent",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
 
 
 def _load_env_file(path: Path) -> None:
-    """Lightweight .env loader (no external dependency)."""
+    """
+    Lightweight .env loader that OVERRIDES existing env vars.
+    This makes .env the source of truth for local runs.
+    """
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -46,7 +59,7 @@ def _load_env_file(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
+        os.environ[k.strip()] = v.strip()
 
 
 @dataclass
@@ -55,7 +68,7 @@ class GHConfig:
     user: str
     repo: str
     branch: str = "main"
-    pages_build_dir: str = "app"
+    pages_build_dir: str = "docs"   # default to /docs (valid Pages source)
     cname: Optional[str] = None
 
     @classmethod
@@ -65,14 +78,29 @@ class GHConfig:
         user = os.getenv("GITHUB_USER", "").strip()
         repo = os.getenv("GITHUB_REPO", "").strip()
         branch = os.getenv("GITHUB_DEFAULT_BRANCH", "main").strip()
-        pages_build_dir = os.getenv("PAGES_BUILD_DIR", "app").strip()
+        pages_build_dir = os.getenv("PAGES_BUILD_DIR", "docs").strip()
         cname = os.getenv("PAGES_CNAME", "").strip() or None
 
-        missing = [k for k, v in {"GITHUB_TOKEN": token, "GITHUB_USER": user, "GITHUB_REPO": repo}.items() if not v]
+        missing = [
+            k for k, v in {
+                "GITHUB_TOKEN": token,
+                "GITHUB_USER": user,
+                "GITHUB_REPO": repo,
+            }.items() if not v
+        ]
         if missing:
-            raise ValueError(f"Missing env vars: {', '.join(missing)} (set them in .env)")
+            raise ValueError(
+                f"Missing env vars: {', '.join(missing)} (set them in .env)"
+            )
 
-        return cls(token=token, user=user, repo=repo, branch=branch, pages_build_dir=pages_build_dir, cname=cname)
+        return cls(
+            token=token,
+            user=user,
+            repo=repo,
+            branch=branch,
+            pages_build_dir=pages_build_dir,
+            cname=cname,
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -90,8 +118,13 @@ def create_repo_if_missing(cfg: GHConfig) -> Dict[str, Any]:
     if r.status_code != 404:
         raise RuntimeError(f"Failed to check repo: {r.status_code} {r.text}")
 
-    # Create
-    payload = {"name": cfg.repo, "private": False, "has_issues": True, "has_projects": False, "has_wiki": False}
+    payload = {
+        "name": cfg.repo,
+        "private": False,
+        "has_issues": True,
+        "has_projects": False,
+        "has_wiki": False,
+    }
     r = s.post(f"{GITHUB_API}/user/repos", json=payload, timeout=30)
     if r.status_code not in (201, 202):
         raise RuntimeError(f"Create repo failed: {r.status_code} {r.text}")
@@ -108,8 +141,7 @@ def ensure_git_identity() -> None:
 
 
 def ensure_branch(branch: str) -> None:
-    # If no commits yet, 'git rev-parse' fails — that's fine.
-    has_head = _run(["git", "rev-parse", "--verify", "HEAD"]).returncode == 0 if False else True
+    """Ensure the working branch exists and is checked out."""
     try:
         _git("rev-parse", "--verify", branch)
         _git("checkout", branch)
@@ -120,7 +152,6 @@ def ensure_branch(branch: str) -> None:
 def ensure_remote_origin(cfg: GHConfig) -> None:
     """Configure 'origin' remote using token auth."""
     remote_url = f"https://{cfg.user}:{cfg.token}@github.com/{cfg.user}/{cfg.repo}.git"
-    # Try set-url; if remote doesn't exist yet, add it
     try:
         _git("remote", "set-url", "origin", remote_url)
     except Exception:
@@ -141,7 +172,7 @@ def push_branch(cfg: GHConfig) -> None:
 
 
 def enable_pages(cfg: GHConfig) -> Dict[str, Any]:
-    """Enable Pages from <branch>/<pages_build_dir> and (optionally) write CNAME file."""
+    """Enable Pages from <branch>/<pages_build_dir>. Treat 200/201/202/204 as success."""
     s = requests.Session()
     s.headers.update(_headers(cfg.token))
 
@@ -152,18 +183,19 @@ def enable_pages(cfg: GHConfig) -> Dict[str, Any]:
         cname_file.write_text(cfg.cname.strip() + "\n", encoding="utf-8")
 
     payload = {"source": {"branch": cfg.branch, "path": f"/{cfg.pages_build_dir}"}}
+    SUCCESS = {200, 201, 202, 204}
 
     # Try to create a Pages site
     r = s.post(f"{GITHUB_API}/repos/{cfg.user}/{cfg.repo}/pages", json=payload, timeout=30)
-    if r.status_code in (201, 202):
-        return r.json()
+    if r.status_code in SUCCESS:
+        return {"status": r.status_code, "mode": "created"}
 
     # If already exists or needs update, try PUT (update config)
     if r.status_code in (409, 422, 400, 404):
         r2 = s.put(f"{GITHUB_API}/repos/{cfg.user}/{cfg.repo}/pages", json=payload, timeout=30)
-        if r2.status_code not in (200, 201, 202):
-            raise RuntimeError(f"Enable/Update Pages failed: {r2.status_code} {r2.text}")
-        return r2.json()
+        if r2.status_code in SUCCESS:
+            return {"status": r2.status_code, "mode": "updated"}
+        raise RuntimeError(f"Enable/Update Pages failed: {r2.status_code} {r2.text}")
 
     raise RuntimeError(f"Pages API error: {r.status_code} {r.text}")
 
